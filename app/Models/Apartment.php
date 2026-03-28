@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Apartment extends Model
 {
@@ -47,6 +48,28 @@ class Apartment extends Model
         "price" => "decimal:2",
         "area" => "decimal:2",
     ];
+
+    /**
+     * Accessor: يقوم بتحويل مسارات الصور إلى روابط كاملة تلقائياً
+     * سيعمل هذا التعديل فوراً في دالة index و show و store
+     */
+    public function getImagesAttribute($value)
+    {
+        if (!$value) return [];
+
+        // تحويل القيمة لمصفوفة إذا كانت مخزنة كـ JSON string
+        $images = is_array($value) ? $value : json_decode($value, true);
+
+        return array_map(function ($image) {
+            // إذا كان الرابط خارجياً (مثل Faker) يبدأ بـ http، نتركه كما هو
+            if (str_starts_with($image, 'http')) {
+                return $image;
+            }
+            
+            // تحويل المسار النسبي إلى رابط URL كامل
+            return asset('storage/' . $image);
+        }, $images);
+    }
 
     // Define relationships
     public function landlord()
