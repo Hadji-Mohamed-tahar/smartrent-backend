@@ -18,7 +18,7 @@ Route::get('apartments/{id}', [ApartmentController::class, 'show']);
 
 // 3. المسارات المحمية (تتطلب تسجيل دخول JWT)
 Route::middleware('auth:api')->group(function () {
-    
+
     // ملف المستخدم الشخصي
     Route::get('user/profile', [AuthController::class, 'profile']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -29,6 +29,8 @@ Route::middleware('auth:api')->group(function () {
     Route::prefix('landlord')->group(function () {
         Route::get('apartments', [LandlordController::class, 'landlordApartments']);
         Route::post('verify', [LandlordController::class, 'uploadVerificationDocument']); // رفع الوثائق
+        // إضافة إحصائيات المالك
+        Route::get('stats', [LandlordController::class, 'stats']);
     });
 
     // عمليات الشقق (Apartments Ops) للمالكين الموثقين

@@ -7,6 +7,8 @@ use App\Models\Apartment;
 use App\Models\VerificationDocument;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class LandlordController extends Controller
 {
@@ -105,5 +107,51 @@ class LandlordController extends Controller
                 'status' => $verification->status
             ]
         ], 201);
+    }
+
+    /**
+     * جلب إحصائيات المالك
+     */
+    public function stats()
+    {
+        $user = auth('api')->user();
+
+        if (!$user) {
+            return response()->json([
+                "status" => "error",
+                "message" => "Unauthorized"
+            ], 401);
+        }
+
+        if ($user->type !== 'landlord') {
+            return response()->json([
+                "status" => "error",
+                "message" => "فقط الملاك يمكنهم الوصول لهذه البيانات"
+            ], 403);
+        }
+
+        $startOfMonth = Carbon::now()->startOfMonth();
+
+        // جمع الإحصائيات بكفاءة باستخدام استعلام واحد
+        $stats = Apartment::where('landlord_id', $user->id)
+            ->selectRaw('
+                SUM(views_count) as total_views,
+                SUM(phone_clicks) as phone_clicks,
+                SUM(CASE WHEN created_at >= ? THEN views_count ELSE 0 END) as monthly_views,
+                SUM(CASE WHEN status = "approved" THEN 1 ELSE 0 END) as published_apartments,
+                SUM(CASE WHEN status = "pending" THEN 1 ELSE 0 END) as pending_apartments
+            ', [$startOfMonth])
+            ->first();
+
+        return response()->json([
+            "status" => "success",
+            "data" => [
+                "total_views" => $stats->total_views ?? 0,
+                "phone_clicks" => $stats->phone_clicks ?? 0,
+                "monthly_views" => $stats->monthly_views ?? 0,
+                "published_apartments" => $stats->published_apartments ?? 0,
+                "pending_apartments" => $stats->pending_apartments ?? 0,
+            ]
+        ]);
     }
 }

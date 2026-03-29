@@ -19,13 +19,11 @@ class EnsureLandlordVerified
             ], 403);
         }
 
-        // تحقق من وجود وثيقة تحقق تمت الموافقة عليها
-        $verified = $user->verificationDocuments()->where('status', 'approved')->exists();
-
-        if (!$verified) {
+        // تحقق من توثيق المستخدم باستخدام العمود is_verified
+        if (!$user->is_verified) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'لا يمكنك إضافة أو تعديل شقة قبل التحقق من وثيقتك'
+                'message' => 'لا يمكنك إضافة أو تعديل شقة قبل التحقق من حسابك'
             ], 403);
         }
 
