@@ -52,16 +52,11 @@ class ApartmentController extends Controller
                 $query->orderBy('price', 'desc');
                 break;
             default:
-                $query->orderBy('created_at', 'desc'); // latest
+                $query->orderBy('created_at', 'desc');
         }
 
         $apartments = $query->get([
-            'id',
-            'title',
-            'wilaya',
-            'price',
-            'images',
-            'amenities'
+            'id', 'title', 'wilaya', 'price', 'images', 'amenities'
         ]);
 
         return response()->json([
@@ -72,7 +67,6 @@ class ApartmentController extends Controller
 
     public function show($id)
     {
-        // جلب الشقة مع بيانات المالك
         $apartment = Apartment::with('landlord:id,name,phone')->find($id);
 
         if (!$apartment) {
@@ -82,7 +76,6 @@ class ApartmentController extends Controller
             ], 404);
         }
 
-        // زيادة عداد المشاهدات
         $apartment->increment('views_count');
 
         return response()->json([
@@ -112,29 +105,20 @@ class ApartmentController extends Controller
         ]);
     }
 
+    /**
+     * إضافة شقة جديدة (للمالكين الموثقين فقط عبر Middleware)
+     */
     public function store(StoreApartmentRequest $request)
     {
-        // 1. استخدام البيانات التي تم التحقق منها (Validated Data) فقط
         $validated = $request->validated();
-
         $user = auth('api')->user();
 
-        // 2. التحقق من الصلاحيات (يفضل لاحقاً نقلها إلى Middleware أو Policy)
-        if (!$user || $user->type !== 'landlord') {
-            return response()->json([
-                "status" => "error",
-                "message" => "فقط الملاك يمكنهم إضافة شقق"
-            ], 403);
-        }
-
-        // 3. معالجة الصور
+        // معالجة الصور
         $imagePaths = [];
         if ($request->hasFile('images')) {
             foreach ($request->file('images') as $image) {
                 if ($image->isValid()) {
-                    // تخزين الملف والحصول على المسار النسبي
                     $path = $image->store('apartments', 'public');
-                    // نصيحة: خزن المسار النسبي فقط في القاعدة، وقم بتحويله لرابط كامل عند العرض (URL)
                     $imagePaths[] = $path;
                 }
             }
@@ -142,11 +126,10 @@ class ApartmentController extends Controller
             return response()->json([
                 "status" => "error",
                 "message" => "يرجى رفع صور للشقة"
-            ], 422); // كود 422 أنسب لأخطاء التحقق من البيانات
+            ], 422);
         }
 
-        // 4. إنشاء الشقة باستخدام البيانات الموثوقة
-        $apartment = \App\Models\Apartment::create([
+        $apartment = Apartment::create([
             "landlord_id"  => $user->id,
             "title"        => $validated['title'],
             "description"  => $validated['description'],
@@ -170,11 +153,12 @@ class ApartmentController extends Controller
         ], 201);
     }
 
+    /**
+     * تعديل شقة موجودة (للمالكين الموثقين فقط)
+     */
     public function update(UpdateApartmentRequest $request, $id)
     {
         $user = auth('api')->user();
-
-        // 1. جلب الشقة
         $apartment = Apartment::find($id);
 
         if (!$apartment) {
@@ -184,7 +168,6 @@ class ApartmentController extends Controller
             ], 404);
         }
 
-        // 2. تحقق من الملكية
         if ($apartment->landlord_id !== $user->id) {
             return response()->json([
                 "status" => "error",
@@ -192,22 +175,18 @@ class ApartmentController extends Controller
             ], 403);
         }
 
-        // 3. التحقق من البيانات الموثوقة
         $validated = $request->validated();
 
-        // 4. معالجة الصور الجديدة (إذا تم رفعها)
         if ($request->hasFile('images')) {
             $imagePaths = [];
             foreach ($request->file('images') as $image) {
                 if ($image->isValid()) {
-                    $path = $image->store('apartments', 'public');
-                    $imagePaths[] = $path;
+                    $imagePaths[] = $image->store('apartments', 'public');
                 }
             }
             $validated['images'] = $imagePaths;
         }
 
-        // 5. تحديث الشقة
         $apartment->update($validated);
 
         return response()->json([
@@ -216,19 +195,13 @@ class ApartmentController extends Controller
             "data" => $apartment
         ]);
     }
+
+    /**
+     * حذف شقة
+     */
     public function destroy($id)
     {
         $user = auth('api')->user();
-
-        // 1️⃣ تحقق من تسجيل الدخول
-        if (!$user) {
-            return response()->json([
-                "status" => "error",
-                "message" => "Unauthorized"
-            ], 401);
-        }
-
-        // 2️⃣ جلب الشقة
         $apartment = Apartment::find($id);
 
         if (!$apartment) {
@@ -238,7 +211,6 @@ class ApartmentController extends Controller
             ], 404);
         }
 
-        // 3️⃣ تحقق من ملكية المالك للشقة
         if ($apartment->landlord_id !== $user->id) {
             return response()->json([
                 "status" => "error",
@@ -246,22 +218,17 @@ class ApartmentController extends Controller
             ], 403);
         }
 
-        // 4️⃣ حذف الصور من التخزين
+        // حذف الصور من التخزين
         if ($apartment->images && is_array($apartment->images)) {
             foreach ($apartment->images as $imagePath) {
-
-                // تنظيف المسار: نحذف الرابط الكامل أو كلمة storage/ إذا وجدت في البداية
-                // هذا يضمن أننا نحصل على "apartments/filename.jpg" فقط
                 $relativePath = str_replace([asset('storage/'), 'storage/', asset('storage')], '', $imagePath);
-                $relativePath = ltrim($relativePath, '/'); // حذف أي شرطة مائلة زائدة في البداية
-
-                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($relativePath)) {
-                    \Illuminate\Support\Facades\Storage::disk('public')->delete($relativePath);
+                $relativePath = ltrim($relativePath, '/');
+                if (Storage::disk('public')->exists($relativePath)) {
+                    Storage::disk('public')->delete($relativePath);
                 }
             }
         }
 
-        // 5️⃣ حذف الشقة من قاعدة البيانات
         $apartment->delete();
 
         return response()->json([
@@ -270,11 +237,13 @@ class ApartmentController extends Controller
         ]);
     }
 
+    /**
+     * تسجيل نقرة على رقم الهاتف
+     */
     public function recordPhoneClick($id)
     {
         $user = auth('api')->user();
 
-        // 1️⃣ تحقق من تسجيل الدخول
         if (!$user) {
             return response()->json([
                 "status" => "error",
@@ -282,7 +251,6 @@ class ApartmentController extends Controller
             ], 401);
         }
 
-        // 2️⃣ تحقق من نوع المستخدم (renter only)
         if ($user->type !== 'renter') {
             return response()->json([
                 "status" => "error",
@@ -290,7 +258,6 @@ class ApartmentController extends Controller
             ], 403);
         }
 
-        // 3️⃣ جلب الشقة
         $apartment = Apartment::find($id);
 
         if (!$apartment) {
@@ -300,7 +267,6 @@ class ApartmentController extends Controller
             ], 404);
         }
 
-        // 4️⃣ زيادة عداد phone_clicks
         $apartment->increment('phone_clicks');
 
         return response()->json([

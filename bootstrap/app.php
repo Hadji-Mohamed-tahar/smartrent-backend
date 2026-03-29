@@ -12,7 +12,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        
+        // 1️⃣ هنا نقوم بتعريف الـ Middleware الخاص بنا بلقب (Alias)
+        $middleware->alias([
+            'verified.landlord' => \App\Http\Middleware\EnsureLandlordVerified::class,
+        ]);
+
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

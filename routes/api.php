@@ -28,13 +28,17 @@ Route::middleware('auth:api')->group(function () {
     // مسارات المالك (Landlord)
     Route::prefix('landlord')->group(function () {
         Route::get('apartments', [LandlordController::class, 'landlordApartments']);
-        Route::post('verify', [LandlordController::class, 'uploadVerificationDocument']); // المسار الجديد
+        Route::post('verify', [LandlordController::class, 'uploadVerificationDocument']); // رفع الوثائق
     });
 
-    // عمليات الشقق (Apartments Ops)
-    Route::post('apartments', [ApartmentController::class, 'store']);
-    Route::post('apartments/{id}', [ApartmentController::class, 'update']);
-    Route::delete('apartments/{id}', [ApartmentController::class, 'destroy']);
+    // عمليات الشقق (Apartments Ops) للمالكين الموثقين
+    Route::middleware('verified.landlord')->group(function () {
+        Route::post('apartments', [ApartmentController::class, 'store']);
+        Route::post('apartments/{id}', [ApartmentController::class, 'update']);
+        Route::delete('apartments/{id}', [ApartmentController::class, 'destroy']);
+    });
+
+    // عمليات الشقق الأخرى (يمكن الوصول لها من الزوار أو الملاك)
     Route::post('apartments/{id}/phone-click', [ApartmentController::class, 'recordPhoneClick']);
 
     // المفضلة (Favorite)
