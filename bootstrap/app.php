@@ -16,7 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // 1️⃣ هنا نقوم بتعريف الـ Middleware الخاص بنا بلقب (Alias)
         $middleware->alias([
             'verified.landlord' => \App\Http\Middleware\EnsureLandlordVerified::class,
-        ]);
+       'admin.check'      => \App\Http\Middleware\AdminCheck::class,
+            ]);
 
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -6,48 +6,49 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;
 
     /**
-     * الخصائص التي يمكن تعبئتها جماعياً.
+     * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
     protected $fillable = [
-        "name",
-        "email",
-        "password",
-        "phone",
-        "type",   // landlord, renter, admin
-        "uid",    // معرف فريد خارجي إذا لزم
+        'name',
+        'email',
+        'password',
+        'phone',
+        'type', // landlord, renter, admin
+        'uid',
+        'is_verified',
     ];
 
     /**
-     * الخصائص المخفية عند التحويل إلى JSON
+     * The attributes that should be hidden for serialization.
      *
      * @var array<int, string>
      */
     protected $hidden = [
-        "password",
-        "remember_token",
+        'password',
+        'remember_token',
     ];
 
     /**
-     * تحويل بعض الخصائص تلقائياً
+     * The attributes that should be cast.
      *
      * @var array<string, string>
      */
     protected $casts = [
-        "email_verified_at" => "datetime",
-        "password" => "hashed",
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+        'is_verified' => 'boolean',
     ];
 
     /**
-     * JWT: استرجاع معرف المستخدم.
+     * Get the identifier that will be stored in the subject claim of the JWT.
      *
      * @return mixed
      */
@@ -57,74 +58,42 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
-     * JWT: أي خصائص مخصصة إضافية
+     * Return a key value array, containing any custom claims to be added to the JWT.
      *
      * @return array
      */
-    public function getJWTCustomClaims(): array
+    public function getJWTCustomClaims()
     {
         return [];
     }
 
-    /**
-     * العلاقة مع الشقق الخاصة بالمالك
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function apartments(): HasMany
+    public function apartments()
     {
-        return $this->hasMany(Apartment::class, "landlord_id");
+        return $this->hasMany(Apartment::class, 'landlord_id');
     }
 
-    /**
-     * العلاقة مع المفضلة
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function favorites(): HasMany
+    public function favorites()
     {
         return $this->hasMany(Favorite::class);
     }
 
-    /**
-     * العلاقة مع وثائق التحقق الخاصة بالمالك
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function verificationDocuments(): HasMany
+    public function verificationDocuments()
     {
-        return $this->hasMany(VerificationDocument::class, 'user_id', 'id');
+        return $this->hasMany(VerificationDocument::class, 'user_id');
     }
 
-    /**
-     * تحقق إذا كان المالك تم التحقق منه
-     *
-     * @return bool
-     */
-    public function isVerified(): bool
+    public function admin()
     {
-        return $this->verificationDocuments()
-                    ->where('status', 'approved')
-                    ->exists();
+        return $this->hasOne(Admin::class);
     }
 
-    /**
-     * علاقة لإحصاء الوثائق المعلقة
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function pendingVerificationDocuments(): HasMany
+    public function payments()
     {
-        return $this->verificationDocuments()->where('status', 'pending');
+        return $this->hasMany(Payment::class);
     }
 
-    /**
-     * علاقة لإحصاء الوثائق المرفوضة
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function rejectedVerificationDocuments(): HasMany
+    public function subscriptions()
     {
-        return $this->verificationDocuments()->where('status', 'rejected');
+        return $this->hasMany(Subscription::class);
     }
 }
