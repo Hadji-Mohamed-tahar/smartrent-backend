@@ -23,7 +23,7 @@ class User extends Authenticatable implements JWTSubject
         'phone',
         'type', // landlord, renter, admin
         'uid',
-        'is_verified',
+        'verification_status', // تم استبدال is_verified بهذا الحقل
     ];
 
     /**
@@ -44,7 +44,7 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
-        'is_verified' => 'boolean',
+        // تمت إزالة cast الخاص بـ is_verified لأنه أصبح Enum/String
     ];
 
     /**
@@ -67,6 +67,7 @@ class User extends Authenticatable implements JWTSubject
         return [];
     }
 
+    // --- العلاقات البرمجية ---
     public function apartments()
     {
         return $this->hasMany(Apartment::class, 'landlord_id');

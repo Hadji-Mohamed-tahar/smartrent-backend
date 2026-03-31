@@ -11,19 +11,29 @@ class EnsureLandlordVerified
     {
         $user = $request->user();
 
-        // تحقق من نوع المستخدم
+        // التحقق من نوع المستخدم
         if (!$user || $user->type !== 'landlord') {
             return response()->json([
                 'status' => 'error',
-                'message' => 'فقط الملاك يمكنهم القيام بهذه العملية'
+                'message' => 'الملاك فقط هم من يمكنهم القيام بهذه العملية'
             ], 403);
         }
 
-        // تحقق من توثيق المستخدم باستخدام العمود is_verified
-        if (!$user->is_verified) {
+        // التحقق من حالة التوثيق باستخدام الحقل الجديد verification_status
+        // الحالة المسموح لها بإضافة العقارات هي 'verified' فقط
+        if ($user->verification_status !== 'verified') {
+            $message = 'لا يمكنك إضافة أو تعديل شقة قبل التحقق من حسابك.';
+            
+            if ($user->verification_status === 'pending') {
+                $message = 'حسابك قيد المراجعة حالياً، يرجى الانتظار حتى يتم التوثيق.';
+            } elseif ($user->verification_status === 'rejected') {
+                $message = 'تم رفض وثائق التوثيق الخاصة بك، يرجى إعادة الرفع مرة أخرى.';
+            }
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'لا يمكنك إضافة أو تعديل شقة قبل التحقق من حسابك'
+                'message' => $message,
+                'current_status' => $user->verification_status
             ], 403);
         }
 

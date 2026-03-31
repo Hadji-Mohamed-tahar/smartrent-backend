@@ -10,9 +10,14 @@ use App\Http\Requests\UpdateProfileRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Tymon\JWTAuth\Facades\JWTAuth;
-use Illuminate\Support\Facades\Hash; // السطر الذي حل المشكلة
+use Illuminate\Support\Facades\Hash;
+use App\Models\User;
+
 class AuthController extends Controller
 {
+    /**
+     * تسجيل الدخول وجلب التوكن وحالة التوثيق
+     */
     public function login(LoginRequest $request)
     {
         $credentials = $request->only("email", "password");
@@ -25,6 +30,7 @@ class AuthController extends Controller
             ], 401);
         }
 
+        /** @var \App\Models\User $user */
         $user = Auth::guard('api')->user();
 
         return response()->json([
@@ -35,63 +41,50 @@ class AuthController extends Controller
                     "id" => $user->id,
                     "name" => $user->name,
                     "type" => $user->type,
+                    "verification_status" => $user->verification_status, // الحقل الجديد للفرونت إند
                 ],
                 "token" => $token,
                 "token_type" => "bearer",
-                // الحصول على وقت انتهاء التوكن بالدقائق وتحويله لثواني
                 "expires_in" => JWTAuth::factory()->getTTL() * 60
             ]
         ]);
     }
 
-    public function register(RegisterRequest $request)
+    /**
+     * تسجيل مستخدم جديد (الحالة الافتراضية unverified)
+     */
+   public function register(RegisterRequest $request)
     {
         $data = $request->only("name", "email", "password", "phone", "type");
 
         // تشفير كلمة المرور
         $data["password"] = bcrypt($data["password"]);
 
+        // إنشاء المستخدم في قاعدة البيانات
         $user = \App\Models\User::create($data);
+
+        // تحديث كائن المستخدم من قاعدة البيانات لجلب القيم الافتراضية (مثل verification_status)
+        $user->refresh();
 
         return response()->json([
             "status" => "success",
-            "message" => "User registered successfully",
+            "message" => "تم تسجيل الحساب بنجاح",
             "data" => [
                 "user" => [
                     "id" => $user->id,
                     "name" => $user->name,
                     "type" => $user->type,
+                    "verification_status" => $user->verification_status, // ستظهر الآن 'unverified' بدلاً من null
                 ]
             ]
         ]);
     }
 
-    public function logout(Request $request)
-    {
-        try {
-            JWTAuth::invalidate(JWTAuth::getToken()); // إبطال التوكن الحالي
-
-            return response()->json([
-                "status" => "success",
-                "message" => "Successfully logged out"
-            ]);
-        } catch (\Tymon\JWTAuth\Exceptions\TokenExpiredException $e) {
-            return response()->json([
-                "status" => "error",
-                "message" => "Token already expired"
-            ], 401);
-        } catch (\Tymon\JWTAuth\Exceptions\JWTException $e) {
-            return response()->json([
-                "status" => "error",
-                "message" => "Token is invalid"
-            ], 401);
-        }
-    }
-
-
+    /**
+     * جلب بيانات الملف الشخصي مع حالة التوثيق الحالية
+     */
     public function profile()
     {
-        // استخدام auth('api')->user() يضمن جلب المستخدم المرتبط بالتوكن الحالي
         $user = auth('api')->user();
 
         if (!$user) {
@@ -109,17 +102,18 @@ class AuthController extends Controller
                 "email" => $user->email,
                 "phone" => $user->phone,
                 "type"  => $user->type,
+                "verification_status" => $user->verification_status, // مهم جداً لتحديث حالة الفرونت إند
             ]
         ]);
     }
 
+    /**
+     * تحديث بيانات الملف الشخصي
+     */
     public function updateProfile(UpdateProfileRequest $request)
     {
-        // 1. الحصول على الـ ID الخاص بالمستخدم الحالي من التوكن
         $userId = auth('api')->id();
-
-        // 2. جلب الموديل مباشرة من قاعدة البيانات لضمان أنه Eloquent Instance
-        $user = \App\Models\User::find($userId);
+        $user = User::find($userId);
 
         if (!$user) {
             return response()->json([
@@ -128,7 +122,6 @@ class AuthController extends Controller
             ], 404);
         }
 
-        // 3. تحديث البيانات التي تم التحقق منها فقط
         $user->update($request->validated());
 
         return response()->json([
@@ -140,14 +133,17 @@ class AuthController extends Controller
                 "email" => $user->email,
                 "phone" => $user->phone,
                 "type"  => $user->type,
+                "verification_status" => $user->verification_status,
             ]
         ]);
     }
 
+    /**
+     * تغيير كلمة المرور
+     */
     public function changePassword(ChangePasswordRequest $request)
     {
-        // 1. جلب المستخدم الحالي كموديل Eloquent لضمان توفر دالة save()
-        $user = \App\Models\User::find(auth('api')->id());
+        $user = User::find(auth('api')->id());
 
         if (!$user) {
             return response()->json([
@@ -156,7 +152,6 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // 2. التحقق من كلمة المرور الحالية باستخدام الـ Facade الصحيح
         if (!Hash::check($request->current_password, $user->password)) {
             return response()->json([
                 "status" => "error",
@@ -164,9 +159,6 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // 3. تحديث كلمة المرور الجديدة
-        // ملاحظة: بما أنك وضعت 'password' => 'hashed' في الـ $casts في موديل User،
-        // فإن Laravel سيقوم بتشفيرها تلقائياً عند الإسناد.
         $user->password = $request->new_password;
         $user->save();
 
@@ -174,5 +166,30 @@ class AuthController extends Controller
             "status" => "success",
             "message" => "تم تحديث كلمة المرور بنجاح"
         ]);
+    }
+
+    /**
+     * تسجيل الخروج وإبطال التوكن
+     */
+    public function logout(Request $request)
+    {
+        try {
+            JWTAuth::invalidate(JWTAuth::getToken());
+
+            return response()->json([
+                "status" => "success",
+                "message" => "تم تسجيل الخروج بنجاح"
+            ]);
+        } catch (\Tymon\JWTAuth\Exceptions\TokenExpiredException $e) {
+            return response()->json([
+                "status" => "error",
+                "message" => "التوكن منتهي الصلاحية بالفعل"
+            ], 401);
+        } catch (\Tymon\JWTAuth\Exceptions\JWTException $e) {
+            return response()->json([
+                "status" => "error",
+                "message" => "التوكن غير صالح"
+            ], 401);
+        }
     }
 }

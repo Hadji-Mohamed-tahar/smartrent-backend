@@ -1,27 +1,22 @@
 <?php
 
 namespace App\Http\Controllers\API;
-use App\Http\Controllers\Controller;
 
+use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Models\VerificationDocument;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
-    // public function __construct()
-    // {
-    //     $this->middleware("auth:api");
-    //     // Add middleware for admin role/permissions here
-    //     // Example: $this->middleware("role:super_admin|moderator");
-    // }
-
-    // Admins Management
+    // --- Admin Management ---
     public function indexAdmins()
     {
         $admins = Admin::with("user")->get();
@@ -75,7 +70,7 @@ class AdminController extends Controller
         return response()->json(null, 204);
     }
 
-    // Packages Management
+    // --- Packages Management ---
     public function indexPackages()
     {
         $packages = Package::all();
@@ -132,12 +127,12 @@ class AdminController extends Controller
             return response()->json(["message" => "Package not found."], 404);
         }
 
-        // TODO: Implement logic to handle existing subscriptions before deleting package
+        // TODO: Handle existing subscriptions before deleting package
         $package->delete();
         return response()->json(null, 204);
     }
 
-    // Payments Management
+    // --- Payments Management ---
     public function indexPendingPayments()
     {
         $payments = Payment::where("status", "pending_verification")->with("user", "package")->get();
@@ -218,7 +213,7 @@ class AdminController extends Controller
         return response()->json(["message" => "Payment rejected successfully.", "payment" => $payment]);
     }
 
-    // Subscriptions Management
+    // --- Subscriptions Management ---
     public function indexSubscriptions()
     {
         $subscriptions = Subscription::with("user", "package")->get();
@@ -244,5 +239,111 @@ class AdminController extends Controller
         $subscription->save();
 
         return response()->json(["message" => "Subscription status updated successfully.", "subscription" => $subscription]);
+    }
+
+    // --- Verification Documents Management ---
+
+    /**
+     * عرض جميع وثائق التحقق المعلقة للمراجعة.
+     */
+    public function indexPendingVerifications()
+    {
+        $pendingVerifications = VerificationDocument::where("status", "pending")
+            ->with("user:id,name,email,phone,verification_status")
+            ->get();
+
+        return response()->json([
+            "status" => "success",
+            "data" => $pendingVerifications->map(function ($verification) {
+                return [
+                    "id" => $verification->id,
+                    "user_id" => $verification->user->id,
+                    "user_name" => $verification->user->name,
+                    "user_email" => $verification->user->email,
+                    "document_type" => $verification->document_type,
+                    "document_path" => Storage::url($verification->document_path),
+                    "status" => $verification->status,
+                    "created_at" => $verification->created_at->format("Y-m-d H:i:s"),
+                ];
+            })
+        ]);
+    }
+
+    /**
+     * قبول وثيقة التحقق وتحديث حالة المستخدم.
+     */
+    public function approveVerification($verification_id)
+    {
+        $verification = VerificationDocument::with("user")->find($verification_id);
+
+        if (!$verification) {
+            return response()->json(["status" => "error", "message" => "وثيقة التحقق غير موجودة."], 404);
+        }
+
+        if ($verification->status !== "pending") {
+            return response()->json(["status" => "error", "message" => "وثيقة التحقق ليست في حالة الانتظار."], 400);
+        }
+
+        DB::transaction(function () use ($verification) {
+            $verification->status = "approved";
+            $verification->save();
+
+            // تحديث حالة المستخدم إلى 'verified'
+            $verification->user->verification_status = "verified";
+            $verification->user->save();
+        });
+
+        return response()->json([
+            "status" => "success",
+            "message" => "تم قبول وثيقة التحقق وتحديث حالة المستخدم بنجاح.",
+            "data" => [
+                "verification" => $verification,
+                "user_verification_status" => $verification->user->verification_status
+            ]
+        ]);
+    }
+
+    /**
+     * رفض وثيقة التحقق وتحديث حالة المستخدم.
+     */
+    public function rejectVerification(Request $request, $verification_id)
+    {
+        $verification = VerificationDocument::with("user")->find($verification_id);
+
+        if (!$verification) {
+            return response()->json(["status" => "error", "message" => "وثيقة التحقق غير موجودة."], 404);
+        }
+
+        if ($verification->status !== "pending") {
+            return response()->json(["status" => "error", "message" => "وثيقة التحقق ليست في حالة الانتظار."], 400);
+        }
+
+        $validator = Validator::make($request->all(), [
+            "admin_notes" => "required|string|max:500",
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(["errors" => $validator->errors()], 422);
+        }
+
+        DB::transaction(function () use ($verification, $request) {
+            $verification->status = "rejected";
+            // إذا أردنا، يمكن تخزين سبب الرفض:
+            // $verification->admin_notes = $request->input("admin_notes");
+            $verification->save();
+
+            // تحديث حالة المستخدم إلى 'rejected'
+            $verification->user->verification_status = "rejected";
+            $verification->user->save();
+        });
+
+        return response()->json([
+            "status" => "success",
+            "message" => "تم رفض وثيقة التحقق وتحديث حالة المستخدم بنجاح.",
+            "data" => [
+                "verification" => $verification,
+                "user_verification_status" => $verification->user->verification_status
+            ]
+        ]);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\Apartment;
 use App\Models\VerificationDocument;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
@@ -22,7 +23,7 @@ class LandlordController extends Controller
         if (!$user) {
             return response()->json([
                 "status" => "error",
-                "message" => "Unauthorized"
+                "message" => "غير مصرح بالدخول"
             ], 401);
         }
 
@@ -47,6 +48,7 @@ class LandlordController extends Controller
      */
     public function uploadVerificationDocument(Request $request)
     {
+        /** @var \App\Models\User $user */
         $user = auth('api')->user();
 
         if (!$user) {
@@ -61,10 +63,12 @@ class LandlordController extends Controller
             'document_type' => 'required|string|in:ID Card,Driving License',
             'document_file' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ], [
-            'document_type.in' => 'نوع الوثيقة يجب أن يكون إما ID Card أو Driving License فقط.'
+            'document_type.in' => 'يجب أن تكون الوثيقة إما ID Card أو Driving License فقط.',
+            'document_file.required' => 'يرجى اختيار ملف الوثيقة.',
+            'document_file.max' => 'حجم الملف يجب أن لا يتجاوز 5 ميجابايت.'
         ]);
 
-        // تحقق من وجود وثيقة من نفس النوع
+        // التحقق من وجود وثيقة قيد الانتظار أو مقبولة لنفس النوع
         $existing = VerificationDocument::where('user_id', $user->id)
             ->where('document_type', $request->document_type)
             ->orderBy('created_at', 'desc')
@@ -74,21 +78,23 @@ class LandlordController extends Controller
             if ($existing->status === 'pending') {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'You already have a pending document of this type. Please wait for admin review.'
+                    'message' => 'لديك وثيقة قيد الانتظار من هذا النوع بالفعل. يرجى انتظار مراجعة الأدمن.'
                 ], 403);
             }
 
             if ($existing->status === 'approved') {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Your document of this type has already been approved. No further verification needed.'
+                    'message' => 'تم قبول وثيقتك من هذا النوع مسبقاً. لا حاجة لمزيد من التحقق.'
                 ], 403);
             }
         }
 
+        // حفظ الملف
         $file = $request->file('document_file');
         $path = $file->store('verification_documents', 'public');
 
+        // إنشاء سجل الوثيقة
         $verification = VerificationDocument::create([
             'user_id' => $user->id,
             'document_type' => $request->document_type,
@@ -96,15 +102,22 @@ class LandlordController extends Controller
             'status' => 'pending'
         ]);
 
+        // تحديث حالة المستخدم الإجمالية إلى "قيد الانتظار"
+        // استخدمنا الـ type hint أعلاه لتفادي خطأ Intelephense
+        $user->update([
+            'verification_status' => 'pending'
+        ]);
+
         return response()->json([
             'status' => 'success',
-            'message' => 'Verification document uploaded successfully. Awaiting admin review.',
+            'message' => 'تم رفع وثيقة التحقق بنجاح. هي الآن بانتظار مراجعة الأدمن.',
             'data' => [
                 'id' => $verification->id,
                 'user_id' => $user->id,
                 'document_type' => $verification->document_type,
                 'document_path' => url('storage/' . $verification->document_path),
-                'status' => $verification->status
+                'status' => $verification->status,
+                'user_verification_status' => $user->verification_status
             ]
         ], 201);
     }
@@ -146,11 +159,11 @@ class LandlordController extends Controller
         return response()->json([
             "status" => "success",
             "data" => [
-                "total_views" => $stats->total_views ?? 0,
-                "phone_clicks" => $stats->phone_clicks ?? 0,
-                "monthly_views" => $stats->monthly_views ?? 0,
-                "published_apartments" => $stats->published_apartments ?? 0,
-                "pending_apartments" => $stats->pending_apartments ?? 0,
+                "total_views" => (int) ($stats->total_views ?? 0),
+                "phone_clicks" => (int) ($stats->phone_clicks ?? 0),
+                "monthly_views" => (int) ($stats->monthly_views ?? 0),
+                "published_apartments" => (int) ($stats->published_apartments ?? 0),
+                "pending_apartments" => (int) ($stats->pending_apartments ?? 0),
             ]
         ]);
     }

@@ -18,26 +18,23 @@ use App\Http\Controllers\Api\UserController;
 */
 
 // --- 1. المسارات العامة (بدون تسجيل دخول) ---
-
-Route::prefix('auth')->group(function () {
-    Route::post('register', [AuthController::class, 'register']);
-    Route::post('login', [AuthController::class, 'login']);
+Route::prefix("auth")->group(function () {
+    Route::post("register", [AuthController::class, "register"]);
+    Route::post("login", [AuthController::class, "login"]);
 });
 
 // مسارات الشقق للزوار
-Route::get('apartments', [ApartmentController::class, 'index']);
-Route::get('apartments/{id}', [ApartmentController::class, 'show']);
-
+Route::get("apartments", [ApartmentController::class, "index"]);
+Route::get("apartments/{id}", [ApartmentController::class, "show"]);
 
 // --- 2. المسارات المحمية (تتطلب JWT Auth) ---
-
 Route::middleware("auth:api")->group(function () {
 
     // أ) الملف الشخصي والتحكم بالحساب
-    Route::get('user/profile', [AuthController::class, 'profile']);
-    Route::post('auth/logout', [AuthController::class, 'logout']);
-    Route::put('user/profile', [AuthController::class, 'updateProfile']);
-    Route::put('user/password', [AuthController::class, 'changePassword']);
+    Route::get("user/profile", [AuthController::class, "profile"]);
+    Route::post("auth/logout", [AuthController::class, "logout"]);
+    Route::put("user/profile", [AuthController::class, "updateProfile"]);
+    Route::put("user/password", [AuthController::class, "changePassword"]);
 
     // ب) مسارات المستخدم (نظام الاشتراكات والمدفوعات)
     Route::prefix("user")->group(function () {
@@ -52,26 +49,26 @@ Route::middleware("auth:api")->group(function () {
     });
 
     // ج) مسارات المالك (Landlord) والشقق
-    Route::prefix('landlord')->group(function () {
-        Route::get('apartments', [LandlordController::class, 'landlordApartments']);
-        Route::post('verify', [LandlordController::class, 'uploadVerificationDocument']);
-        Route::get('stats', [LandlordController::class, 'stats']);
+    Route::prefix("landlord")->group(function () {
+        Route::get("apartments", [LandlordController::class, "landlordApartments"]);
+        Route::post("verify", [LandlordController::class, "uploadVerificationDocument"]);
+        Route::get("stats", [LandlordController::class, "stats"]);
     });
 
-    // عمليات الشقق للملاك الموثقين
-    Route::middleware('verified.landlord')->group(function () {
-        Route::post('apartments', [ApartmentController::class, 'store']);
-        Route::post('apartments/{id}', [ApartmentController::class, 'update']);
-        Route::delete('apartments/{id}', [ApartmentController::class, 'destroy']);
+    // د) عمليات الشقق للملاك الموثقين (Middleware الخاص بالتحقق)
+    Route::middleware("verified.landlord")->group(function () {
+        Route::post("apartments", [ApartmentController::class, "store"]);
+        Route::post("apartments/{id}", [ApartmentController::class, "update"]);
+        Route::delete("apartments/{id}", [ApartmentController::class, "destroy"]);
     });
 
-    Route::post('apartments/{id}/phone-click', [ApartmentController::class, 'recordPhoneClick']);
+    Route::post("apartments/{id}/phone-click", [ApartmentController::class, "recordPhoneClick"]);
 
-    // د) المفضلة (Favorite)
-    Route::get('/favorites', [FavoriteController::class, 'index']);
-    Route::post('/favorites/{apartment_id}', [FavoriteController::class, 'toggle']);
+    // هـ) المفضلة (Favorite)
+    Route::get("/favorites", [FavoriteController::class, "index"]);
+    Route::post("/favorites/{apartment_id}", [FavoriteController::class, "toggle"]);
 
-    // هـ) مسارات الأدمن (Admin APIs)
+    // و) مسارات الأدمن (Admin APIs)
     Route::prefix("admin")->middleware("admin.check")->group(function () {
         
         // إدارة الأدمن
@@ -93,6 +90,11 @@ Route::middleware("auth:api")->group(function () {
         Route::put("payments/{payment_id}/reject", [AdminController::class, "rejectPayment"]);
         Route::get("subscriptions", [AdminController::class, "indexSubscriptions"]);
         Route::put("subscriptions/{subscription_id}/status", [AdminController::class, "updateSubscriptionStatus"]);
+
+        // إدارة وثائق التحقق (المسارات الجديدة)
+        Route::get("verifications/pending", [AdminController::class, "indexPendingVerifications"]);
+        Route::put("verifications/{verification_id}/approve", [AdminController::class, "approveVerification"]);
+        Route::put("verifications/{verification_id}/reject", [AdminController::class, "rejectVerification"]);
     });
 
 });
