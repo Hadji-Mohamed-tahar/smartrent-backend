@@ -8,7 +8,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ApartmentController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\LandlordController;
-use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\AdminController; // نستخدم هذا لجميع مهام الأدمن
 use App\Http\Controllers\Api\UserController;
 
 /*
@@ -36,7 +36,7 @@ Route::middleware("auth:api")->group(function () {
     Route::put("user/profile", [AuthController::class, "updateProfile"]);
     Route::put("user/password", [AuthController::class, "changePassword"]);
 
-    // ب) مسارات المستخدم (نظام الاشتراكات والمدفوعات)
+    // ب) مسارات المستخدم العادي (نظام الاشتراكات والمدفوعات)
     Route::prefix("user")->group(function () {
         Route::get("packages", [UserController::class, "indexPackages"]);
         Route::get("packages/{package_id}", [UserController::class, "showPackage"]);
@@ -55,7 +55,7 @@ Route::middleware("auth:api")->group(function () {
         Route::get("stats", [LandlordController::class, "stats"]);
     });
 
-    // د) عمليات الشقق للملاك الموثقين (Middleware الخاص بالتحقق)
+    // د) عمليات الشقق للملاك الموثقين
     Route::middleware("verified.landlord")->group(function () {
         Route::post("apartments", [ApartmentController::class, "store"]);
         Route::post("apartments/{id}", [ApartmentController::class, "update"]);
@@ -68,33 +68,40 @@ Route::middleware("auth:api")->group(function () {
     Route::get("/favorites", [FavoriteController::class, "index"]);
     Route::post("/favorites/{apartment_id}", [FavoriteController::class, "toggle"]);
 
-    // و) مسارات الأدمن (Admin APIs)
+    // و) مسارات المسؤول (Admin APIs)
     Route::prefix("admin")->middleware("admin.check")->group(function () {
         
-        // إدارة الأدمن
-        Route::get("admins", [AdminController::class, "indexAdmins"]);
-        Route::post("admins", [AdminController::class, "storeAdmin"]);
-        Route::put("admins/{admin_id}", [AdminController::class, "updateAdmin"]);
-        Route::delete("admins/{admin_id}", [AdminController::class, "destroyAdmin"]);
+        // إدارة الأدمن (المشرفين)
+        Route::get('admins', [AdminController::class, 'indexAdmins']);
+        Route::post('admins', [AdminController::class, 'storeAdmin']);
+        Route::put('admins/{admin_id}', [AdminController::class, 'updateAdmin']);
+        Route::delete('admins/{admin_id}', [AdminController::class, 'destroyAdmin']);
 
         // إدارة الباقات
-        Route::get("packages", [AdminController::class, "indexPackages"]);
-        Route::post("packages", [AdminController::class, "storePackage"]);
-        Route::put("packages/{package_id}", [AdminController::class, "updatePackage"]);
-        Route::delete("packages/{package_id}", [AdminController::class, "destroyPackage"]);
+        Route::get('packages', [AdminController::class, 'indexPackages']);
+        Route::post('packages', [AdminController::class, 'storePackage']);
+        Route::put('packages/{package_id}', [AdminController::class, 'updatePackage']);
+        Route::delete('packages/{package_id}', [AdminController::class, 'destroyPackage']);
 
-        // إدارة المدفوعات والاشتراكات
-        Route::get("payments/pending", [AdminController::class, "indexPendingPayments"]);
-        Route::get("payments/{payment_id}", [AdminController::class, "showPayment"]);
-        Route::put("payments/{payment_id}/approve", [AdminController::class, "approvePayment"]);
-        Route::put("payments/{payment_id}/reject", [AdminController::class, "rejectPayment"]);
-        Route::get("subscriptions", [AdminController::class, "indexSubscriptions"]);
-        Route::put("subscriptions/{subscription_id}/status", [AdminController::class, "updateSubscriptionStatus"]);
+        // إدارة المدفوعات
+        Route::get('payments/pending', [AdminController::class, 'indexPendingPayments']);
+        Route::get('payments/{payment_id}', [AdminController::class, 'showPayment']);
+        Route::post('payments/{payment_id}/approve', [AdminController::class, 'approvePayment']);
+        Route::post('payments/{payment_id}/reject', [AdminController::class, 'rejectPayment']);
 
-        // إدارة وثائق التحقق (المسارات الجديدة)
-        Route::get("verifications/pending", [AdminController::class, "indexPendingVerifications"]);
-        Route::put("verifications/{verification_id}/approve", [AdminController::class, "approveVerification"]);
-        Route::put("verifications/{verification_id}/reject", [AdminController::class, "rejectVerification"]);
+        // إدارة الاشتراكات
+        Route::get('subscriptions', [AdminController::class, 'indexSubscriptions']);
+        Route::put('subscriptions/{subscription_id}/status', [AdminController::class, 'updateSubscriptionStatus']);
+
+        // إدارة وثائق التحقق
+        Route::get('verifications/pending', [AdminController::class, 'indexPendingVerifications']);
+        Route::post('verifications/{verification_id}/approve', [AdminController::class, 'approveVerification']);
+        Route::post('verifications/{verification_id}/reject', [AdminController::class, 'rejectVerification']);
+
+        // --- إضافة مسارات إدارة الشقق الجديدة هنا ---
+        Route::get('apartments', [AdminController::class, 'indexApartments']);
+        Route::post('apartments/{id}/approve', [AdminController::class, 'approveApartment']);
+        Route::post('apartments/{id}/reject', [AdminController::class, 'rejectApartment']);
     });
 
 });

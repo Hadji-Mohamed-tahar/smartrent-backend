@@ -29,6 +29,7 @@ class Apartment extends Model
         "is_active",
         "is_featured",
         "status",
+        "admin_notes",
         "views_count",
         "phone_clicks",
         "amenities",

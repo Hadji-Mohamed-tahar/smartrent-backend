@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\Apartment;
 use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Subscription;
@@ -61,15 +62,34 @@ class AdminController extends Controller
 
     public function destroyAdmin($admin_id)
     {
+        // 1. البحث عن المدير
         $admin = Admin::find($admin_id);
+
         if (!$admin) {
-            return response()->json(["message" => "Admin not found."], 404);
+            return response()->json([
+                "status" => "error",
+                "message" => "المسؤول غير موجود في النظام"
+            ], 404);
         }
 
-        $admin->delete();
-        return response()->json(null, 204);
-    }
+        // الاحتفاظ بالـ ID قبل الحذف لإرساله في الرد
+        $deletedId = $admin->id;
+        $userId = $admin->user_id;
 
+        // 2. تنفيذ الحذف (حذف صلاحية الأدمن فقط)
+        $admin->delete();
+
+        // 3. الرد النهائي بنجاح (مفيد جداً للـ Front-end لتحديث القائمة)
+        return response()->json([
+            "status" => "success",
+            "message" => "تم سحب صلاحيات المسؤول بنجاح",
+            "data" => [
+                "admin_id" => (int) $deletedId,
+                "user_id"  => (int) $userId,
+                "action"   => "permissions_revoked"
+            ]
+        ], 200);
+    }
     // --- Packages Management ---
     public function indexPackages()
     {
@@ -122,14 +142,38 @@ class AdminController extends Controller
 
     public function destroyPackage($package_id)
     {
+        // 1. البحث عن الباقة
         $package = Package::find($package_id);
+
         if (!$package) {
-            return response()->json(["message" => "Package not found."], 404);
+            return response()->json([
+                "status" => "error",
+                "message" => "الباقة غير موجودة"
+            ], 404);
         }
 
-        // TODO: Handle existing subscriptions before deleting package
+        // 2. التحقق من وجود اشتراكات مرتبطة (حماية لقاعدة البيانات)
+        // نتحقق مما إذا كان هناك أي مستخدم مشترك حالياً في هذه الباقة
+        $hasActiveSubscriptions = $package->subscriptions()->exists();
+
+        if ($hasActiveSubscriptions) {
+            return response()->json([
+                "status" => "error",
+                "message" => "لا يمكن حذف هذه الباقة لوجود مستخدمين مشتركين فيها حالياً. يمكنك تعطيلها (is_active = false) بدلاً من الحذف."
+            ], 422); // كود 422 للعمليات غير القابلة للتنفيذ منطقياً
+        }
+
+        // 3. تنفيذ الحذف
         $package->delete();
-        return response()->json(null, 204);
+
+        // 4. الرد بنجاح مع الهيكل الموحد
+        return response()->json([
+            "status" => "success",
+            "message" => "تم حذف الباقة بنجاح من النظام",
+            "data" => [
+                "package_id" => (int) $package_id
+            ]
+        ], 200);
     }
 
     // --- Payments Management ---
@@ -243,9 +287,7 @@ class AdminController extends Controller
 
     // --- Verification Documents Management ---
 
-    /**
-     * عرض جميع وثائق التحقق المعلقة للمراجعة.
-     */
+
     public function indexPendingVerifications()
     {
         $pendingVerifications = VerificationDocument::where("status", "pending")
@@ -269,9 +311,7 @@ class AdminController extends Controller
         ]);
     }
 
-    /**
-     * قبول وثيقة التحقق وتحديث حالة المستخدم.
-     */
+
     public function approveVerification($verification_id)
     {
         $verification = VerificationDocument::with("user")->find($verification_id);
@@ -303,9 +343,7 @@ class AdminController extends Controller
         ]);
     }
 
-    /**
-     * رفض وثيقة التحقق وتحديث حالة المستخدم.
-     */
+
     public function rejectVerification(Request $request, $verification_id)
     {
         $verification = VerificationDocument::with("user")->find($verification_id);
@@ -344,6 +382,92 @@ class AdminController extends Controller
                 "verification" => $verification,
                 "user_verification_status" => $verification->user->verification_status
             ]
+        ]);
+    }
+
+
+    // ادارة الشقق
+    /**
+     * عرض جميع الشقق مع بيانات المالك
+     */
+    public function indexApartments(Request $request)
+    {
+        // ابدأ الاستعلام مع جلب بيانات المالك
+        $query = Apartment::with('landlord');
+
+        // الفلترة حسب الحالة إذا تم إرسالها في الرابط (مثلاً: ?status=pending)
+        if ($request->has('status') && in_array($request->status, ['pending', 'approved', 'rejected'])) {
+            $query->where('status', $request->status);
+        }
+
+        // ترتيب الشقق من الأحدث إلى الأقدم
+        $apartments = $query->latest()->get();
+
+        return response()->json([
+            'status' => 'success',
+            'count' => $apartments->count(),
+            'data' => $apartments
+        ]);
+    }
+
+    /**
+     * قبول الشقة فقط (دون المساس بتوثيق حساب المالك)
+     */
+    public function approveApartment(Request $request, $id)
+    {
+        $apartment = Apartment::find($id);
+
+        if (!$apartment) {
+            return response()->json(['message' => 'Apartment not found.'], 404);
+        }
+
+        if ($apartment->status === 'approved') {
+            return response()->json(['message' => 'Apartment is already approved.'], 400);
+        }
+
+        // تحديث الشقة فقط
+        $apartment->update([
+            'status' => 'approved',
+            'is_active' => true,
+            'admin_notes' => null // مسح أي ملاحظات رفض سابقة بما أننا قبلناها الآن
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Apartment approved successfully. It is now visible to users.',
+            'apartment' => $apartment
+        ]);
+    }
+
+    /**
+     * رفض الشقة مع تسجيل السبب
+     */
+    public function rejectApartment(Request $request, $id)
+    {
+        $apartment = Apartment::find($id);
+
+        if (!$apartment) {
+            return response()->json(['message' => 'Apartment not found.'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'reason' => 'required|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $apartment->update([
+            'status' => 'rejected',
+            'is_active' => false, // إخفاء من العرض العام فوراً
+            'admin_notes' => $request->reason
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Apartment rejected.',
+            'apartment' => $apartment
         ]);
     }
 }

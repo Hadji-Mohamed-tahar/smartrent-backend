@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Subscription;
-use App\Models\User; // إضافة الموديل لضمان عمل الـ Type Hinting
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB; // <--- هذا السطر سيحل مشكلة Undefined DB نهائياً
 
 class UserController extends Controller
 {
@@ -30,7 +31,6 @@ class UserController extends Controller
         return response()->json(["package" => $package]);
     }
 
-    // Subscriptions & Payments
     public function subscribeToPackage(Request $request)
     {
         /** @var User $user */
@@ -38,8 +38,7 @@ class UserController extends Controller
 
         $validator = Validator::make($request->all(), [
             "package_id" => "required|exists:packages,id",
-            "amount" => "required|numeric|min:0",
-            "payment_method" => "required|string|in:manual_bank_transfer",
+            "payment_method" => "sometimes|required|string|in:manual_bank_transfer",
         ]);
 
         if ($validator->fails()) {
@@ -47,23 +46,67 @@ class UserController extends Controller
         }
 
         $package = Package::find($request->package_id);
+
         if (!$package || !$package->is_active) {
             return response()->json(["message" => "Package not found or not active."], 404);
         }
 
-        // Create a pending payment record
-        $payment = Payment::create([
-            "user_id" => $user->id,
-            "package_id" => $package->id,
-            "amount" => $request->amount,
-            "payment_method" => $request->payment_method,
-            "status" => "pending_verification",
-        ]);
+        // 1. التحقق من وجود أي اشتراك نشط حالياً (لأي باقة)
+        $activeSubscription = $user->subscriptions()
+            ->where('is_active', true)
+            ->where('end_date', '>', now())
+            ->first();
 
-        return response()->json([
-            "message" => "Subscription process initiated. Please upload your payment receipt.",
-            "payment" => $payment,
-        ], 201);
+        if ($activeSubscription) {
+            return response()->json([
+                "message" => "You already have an active subscription. You cannot subscribe to a new one until it expires.",
+                "current_subscription" => $activeSubscription,
+            ], 400);
+        }
+
+        // 2. معالجة الباقة المجانية باستخدام DB Transaction المستورد في الأعلى
+        if ($package->price == 0) {
+            return DB::transaction(function () use ($user, $package) {
+                // إلغاء تفعيل أي اشتراكات سابقة لضمان النظافة
+                $user->subscriptions()->update(['is_active' => false]);
+
+                $startDate = now();
+                $endDate = $startDate->copy()->addDays($package->duration_in_days);
+
+                $subscription = Subscription::create([
+                    "user_id" => $user->id,
+                    "package_id" => $package->id,
+                    "start_date" => $startDate,
+                    "end_date" => $endDate,
+                    "is_active" => true,
+                ]);
+
+                return response()->json([
+                    "message" => "Free package subscribed and activated successfully.",
+                    "subscription" => $subscription,
+                ], 201);
+            });
+        } 
+        
+        // 3. معالجة الباقة المدفوعة
+        else {
+            if (!$request->has('payment_method')) {
+                return response()->json(["message" => "Payment method is required for paid packages."], 422);
+            }
+
+            $payment = Payment::create([
+                "user_id" => $user->id,
+                "package_id" => $package->id,
+                "amount" => $package->price,
+                "payment_method" => $request->payment_method,
+                "status" => "pending_verification",
+            ]);
+
+            return response()->json([
+                "message" => "Subscription process initiated. Please upload your payment receipt.",
+                "payment" => $payment,
+            ], 201);
+        }
     }
 
     public function uploadPaymentReceipt(Request $request, $payment_id)
@@ -107,8 +150,10 @@ class UserController extends Controller
         /** @var User $user */
         $user = Auth::user();
         
-        // هنا تم حل مشكلة التحذير
-        $subscription = $user->subscriptions()->where("is_active", true)->latest("end_date")->first();
+        $subscription = $user->subscriptions()
+            ->where("is_active", true)
+            ->latest("end_date")
+            ->first();
 
         if (!$subscription) {
             return response()->json(["message" => "No active subscription found.", "subscription" => null]);

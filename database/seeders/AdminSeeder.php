@@ -5,69 +5,75 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\Admin;
+use Illuminate\Support\Facades\Hash;
 
 class AdminSeeder extends Seeder
 {
+    /**
+     * Run the database seeds.
+     */
     public function run()
     {
-        // 1. الأدمن الأساسي (تم تشغيله مسبقاً - سيتم تخطيه)
-        $admin1 = User::firstOrCreate(
-            ['email' => 'admin@gmail.com'],
+        // مصفوفة تحتوي على بيانات المديرين بكلمات مرور مخصصة وفريدة
+        $adminUsers = [
             [
-                'name' => 'Lakhdar',
-                'password' => bcrypt('000000'),
-                'phone' => '0000000000',
-                'type' => 'renter',
-                'verification_status' => 'verified'
-            ]
-        );
-
-        Admin::firstOrCreate(
-            ['user_id' => $admin1->id],
-            [
+                'name' => 'Super Admin',
+                'email' => 'superadmin@smartrent.dz',
+                'password' => 'Admin@SR2026!', // كلمة مرور قوية وفريدة
                 'role' => 'super_admin',
-                'permissions' => json_encode(['manage_users', 'manage_packages', 'manage_payments', 'manage_apartments'])
-            ]
-        );
-
-        // 2. إضافة أدمن جديد: مدير العقارات (Moderator)
-        $admin2 = User::firstOrCreate(
-            ['email' => 'moderator@smartrent.dz'],
+                'permissions' => ['manage_users', 'manage_packages', 'manage_payments', 'manage_apartments'],
+                'phone' => '0550000001'
+            ],
             [
-                'name' => 'Ahmed Moderator',
-                'password' => bcrypt('123456'),
-                'phone' => '0555112233',
-                'type' => 'renter',
-                'verification_status' => 'verified'
-            ]
-        );
-
-        Admin::firstOrCreate(
-            ['user_id' => $admin2->id],
-            [
-                'role' => 'moderator',
-                'permissions' => json_encode(['manage_apartments', 'manage_users'])
-            ]
-        );
-
-        // 3. إضافة أدمن جديد: المدير المالي (Finance)
-        $admin3 = User::firstOrCreate(
-            ['email' => 'finance@smartrent.dz'],
-            [
-                'name' => 'Sara Finance',
-                'password' => bcrypt('123456'),
-                'phone' => '0555445566',
-                'type' => 'renter',
-                'verification_status' => 'verified'
-            ]
-        );
-
-        Admin::firstOrCreate(
-            ['user_id' => $admin3->id],
-            [
+                'name' => 'Finance Admin',
+                'email' => 'finance@smartrent.dz',
+                'password' => 'Fin#Smart!99', 
                 'role' => 'finance_admin',
-                'permissions' => json_encode(['manage_payments', 'manage_packages'])
-            ]
-        );
+                'permissions' => ['manage_payments', 'manage_packages'],
+                'phone' => '0550000002'
+            ],
+            [
+                'name' => 'Support Admin',
+                'email' => 'support@smartrent.dz',
+                'password' => 'Supp_Rent_2026',
+                'role' => 'support_admin',
+                'permissions' => ['manage_apartments', 'manage_users'],
+                'phone' => '0550000003'
+            ],
+            [
+                'name' => 'Verification Admin',
+                'email' => 'verification@smartrent.dz',
+                'password' => 'Verify@Safe_DZ',
+                'role' => 'verification_admin',
+                'permissions' => ['manage_users'],
+                'phone' => '0550000004'
+            ],
+        ];
+
+        foreach ($adminUsers as $adminData) {
+            // 1. إنشاء أو جلب المستخدم في جدول users
+            $user = User::firstOrCreate(
+                ['email' => $adminData['email']],
+                [
+                    'name'                => $adminData['name'],
+                    'password'            => Hash::make($adminData['password']), // تشفير كلمة المرور الخاصة بكل مسؤول
+                    'phone'               => $adminData['phone'],
+                    'type'                => 'renter', 
+                    'verification_status' => 'verified',
+                    'email_verified_at'   => now(),
+                ]
+            );
+
+            // 2. ربط المستخدم بجدول admins وتحديد الدور والصلاحيات
+            Admin::firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'role'        => $adminData['role'],
+                    'permissions' => json_encode($adminData['permissions'])
+                ]
+            );
+        }
+
+        $this->command->info('تم إنشاء حسابات المديرين بكلمات مرور مخصصة وآمنة.');
     }
 }
