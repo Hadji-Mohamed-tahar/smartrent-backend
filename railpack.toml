@@ -1,0 +1,5 @@
+[build]
+cmd = "composer install --optimize-autoloader --no-scripts --no-interaction"
+
+[start]
+cmd = "php artisan storage:link --force && php -S 0.0.0.0:9001 -t public"
