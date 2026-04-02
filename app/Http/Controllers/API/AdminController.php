@@ -521,4 +521,149 @@ class AdminController extends Controller
             'apartment' => $apartment
         ]);
     }
+    /**
+     * عرض تفاصيل شقة محددة للمسؤول
+     */
+    public function showApartment($id)
+    {
+        // جلب الشقة مع بيانات المالك (الاسم، الهاتف، الإيميل) 
+        $apartment = Apartment::with(['landlord:id,name,email,phone,verification_status'])
+            ->find($id);
+
+        if (!$apartment) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'الشقة غير موجودة.'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $apartment
+        ]);
+    }
+
+
+
+
+
+    //ادارة المستخدمين
+    /**
+     * عرض قائمة بجميع المستخدمين (باستثناء المسؤولين).
+     */
+    public function listUsers()
+    {
+        // جلب المستخدمين الذين ليس لديهم سجل في جدول admins
+        $users = User::whereDoesntHave('admin')
+            ->with('activeSubscription') // اختياري: إذا أردت رؤية حالة اشتراكهم في القائمة
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'count'  => $users->count(),
+            'users'  => $users
+        ]);
+    }
+
+    /**
+     * عرض تفاصيل مستخدم محدد (بشرط ألا يكون مسؤولاً).
+     */
+    public function showUser($id)
+    {
+        // نبحث عن المستخدم مع التأكد أنه ليس لديه سجل في جدول admins
+        $user = User::whereDoesntHave('admin')
+            ->with(['activeSubscription', 'subscriptions', 'apartments']) // أضفنا العلاقات التي تهم الإدارة
+            ->find($id);
+
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'المستخدم غير موجود أو غير مصرح بعرض بياناته كزبون.'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'user' => $user
+        ]);
+    }
+
+    /**
+     * حذف مستخدم محدد.
+     */
+    public function deleteUser($id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json(['message' => 'المستخدم غير موجود.'], 404);
+        }
+
+        // منع حذف المستخدمين الذين لديهم سجل في جدول admins (حماية إضافية)
+        if ($user->admin) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'لا يمكن حذف مستخدم لديه صلاحيات إدارية.'
+            ], 403);
+        }
+
+        $user->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'تم حذف المستخدم بنجاح.'
+        ], 200);
+    }
+
+
+    /**
+     * الحصول على إحصائيات عامة للوحة التحكم
+     */
+    public function getStats()
+    {
+        // 1. حساب عدد الشقق (الكلي، والمعلق للمراجعة)
+        $totalApartments = Apartment::count();
+        $pendingApartments = Apartment::where('status', 'pending')->count();
+
+        // 2. حساب الاشتراكات النشطة (ليست مجانية ولديها تاريخ صلاحية سارٍ)
+        $activeSubscriptions = Subscription::where('is_active', true)
+            ->where('end_date', '>', now())
+            ->count();
+
+        // 3. إجمالي المداخيل لهذا الشهر (فقط العمليات المقبولة)
+        $thisMonthRevenue = Payment::where('status', 'approved')
+            ->whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->sum('amount');
+
+        // 4. طلبات التوثيق المعلقة
+        $pendingVerifications = VerificationDocument::where('status', 'pending')->count();
+
+        // 5. إجمالي المستخدمين (الملاك والزبائن)
+        $totalUsers = User::whereDoesntHave('admin')->count();
+
+        return response()->json([
+            "status" => "success",
+            "data" => [
+                "apartments" => [
+                    "total" => $totalApartments,
+                    "pending" => $pendingApartments,
+                ],
+                "subscriptions" => [
+                    "active_paid" => $activeSubscriptions,
+                ],
+                "revenue" => [
+                    "this_month" => round($thisMonthRevenue, 2),
+                    "currency" => "DZD" // أو العملة التي تعتمدها
+                ],
+                "verifications" => [
+                    "pending" => $pendingVerifications,
+                ],
+                "users" => [
+                    "total_clients" => $totalUsers
+                ],
+                "timestamp" => now()->format('Y-m-d H:i:s')
+            ]
+        ]);
+    }
 }

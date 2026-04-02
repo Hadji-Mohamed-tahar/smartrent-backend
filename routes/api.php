@@ -8,7 +8,7 @@ use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ApartmentController;
 use App\Http\Controllers\API\FavoriteController;
 use App\Http\Controllers\API\LandlordController;
-use App\Http\Controllers\API\AdminController; 
+use App\Http\Controllers\API\AdminController;
 use App\Http\Controllers\API\UserController;
 
 /*
@@ -75,7 +75,12 @@ Route::middleware("auth:api")->group(function () {
 
     // و) مسارات المسؤول (Admin APIs)
     Route::prefix("admin")->middleware("admin.check")->group(function () {
-        
+
+        // --- إدارة المستخدمين (إضافة جديدة) ---
+        Route::get("users", [AdminController::class, "listUsers"]);
+        Route::get("users/{id}", [AdminController::class, "showUser"]);
+        Route::delete("users/{id}", [AdminController::class, "deleteUser"]);
+
         // إدارة الأدمن
         Route::get('admins', [AdminController::class, 'indexAdmins']);
         Route::post('admins', [AdminController::class, 'storeAdmin']);
@@ -107,6 +112,9 @@ Route::middleware("auth:api")->group(function () {
         Route::get('apartments', [AdminController::class, 'indexApartments']);
         Route::post('apartments/{id}/approve', [AdminController::class, 'approveApartment']);
         Route::post('apartments/{id}/reject', [AdminController::class, 'rejectApartment']);
-    });
+        Route::get('apartments/{id}', [AdminController::class, 'showApartment']);
 
+        // عرض الاحصائيات
+        Route::get('/stats', [AdminController::class, 'getStats']);
+    });
 });
