@@ -4,12 +4,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // استيراد المتحكمات (Controllers)
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\ApartmentController;
-use App\Http\Controllers\Api\FavoriteController;
-use App\Http\Controllers\Api\LandlordController;
-use App\Http\Controllers\Api\AdminController; 
-use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\ApartmentController;
+use App\Http\Controllers\API\FavoriteController;
+use App\Http\Controllers\API\LandlordController;
+use App\Http\Controllers\API\AdminController; 
+use App\Http\Controllers\API\UserController;
 
 /*
 |--------------------------------------------------------------------------
