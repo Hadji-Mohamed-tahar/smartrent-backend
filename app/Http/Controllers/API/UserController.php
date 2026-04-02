@@ -51,24 +51,22 @@ class UserController extends Controller
             return response()->json(["message" => "Package not found or not active."], 404);
         }
 
-        // 1. التحقق من وجود أي اشتراك نشط حالياً (لأي باقة)
-        $activeSubscription = $user->subscriptions()
-            ->where('is_active', true)
-            ->where('end_date', '>', now())
-            ->first();
+        // 1. جلب الاشتراك النشط الحالي (إن وجد)
+        $activeSubscription = $user->activeSubscription;
 
-        if ($activeSubscription) {
+        // التحقق: إذا كان يحاول الاشتراك في نفس الباقة النشطة لديه حالياً
+        if ($activeSubscription && $activeSubscription->package_id == $package->id) {
             return response()->json([
-                "message" => "You already have an active subscription. You cannot subscribe to a new one until it expires.",
+                "message" => "You are already subscribed to this package.",
                 "current_subscription" => $activeSubscription,
             ], 400);
         }
 
-        // 2. معالجة الباقة المجانية باستخدام DB Transaction المستورد في الأعلى
+        // 2. معالجة الباقة المجانية (الترقية من مجاني لمجاني أو استبدال)
         if ($package->price == 0) {
             return DB::transaction(function () use ($user, $package) {
-                // إلغاء تفعيل أي اشتراكات سابقة لضمان النظافة
-                $user->subscriptions()->update(['is_active' => false]);
+                // إيقاف أي اشتراك نشط قديم فوراً للسماح بالجديد
+                $user->subscriptions()->where('is_active', true)->update(['is_active' => false]);
 
                 $startDate = now();
                 $endDate = $startDate->copy()->addDays($package->duration_in_days);
@@ -82,14 +80,27 @@ class UserController extends Controller
                 ]);
 
                 return response()->json([
-                    "message" => "Free package subscribed and activated successfully.",
+                    "message" => "Free package activated successfully.",
                     "subscription" => $subscription,
                 ], 201);
             });
-        } 
-        
-        // 3. معالجة الباقة المدفوعة
+        }
+
+        // 3. معالجة الباقة المدفوعة (الترقية من مجاني إلى مدفوع)
         else {
+            // إذا كان لديه اشتراك مدفوع "قيد الانتظار" لنفس الباقة، نمنعه من تكرار الطلب
+            $pendingPayment = Payment::where('user_id', $user->id)
+                ->where('package_id', $package->id)
+                ->where('status', 'pending_verification')
+                ->first();
+
+            if ($pendingPayment) {
+                return response()->json([
+                    "message" => "You already have a pending payment for this package. Please upload the receipt.",
+                    "payment" => $pendingPayment
+                ], 400);
+            }
+
             if (!$request->has('payment_method')) {
                 return response()->json(["message" => "Payment method is required for paid packages."], 422);
             }
@@ -103,7 +114,7 @@ class UserController extends Controller
             ]);
 
             return response()->json([
-                "message" => "Subscription process initiated. Please upload your payment receipt.",
+                "message" => "Subscription initiated. Once approved, your old subscription will be replaced.",
                 "payment" => $payment,
             ], 201);
         }
@@ -149,7 +160,7 @@ class UserController extends Controller
     {
         /** @var User $user */
         $user = Auth::user();
-        
+
         $subscription = $user->subscriptions()
             ->where("is_active", true)
             ->latest("end_date")

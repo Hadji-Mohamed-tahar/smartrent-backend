@@ -23,7 +23,7 @@ class User extends Authenticatable implements JWTSubject
         'phone',
         'type', // landlord, renter, admin
         'uid',
-        'verification_status', // تم استبدال is_verified بهذا الحقل
+        'verification_status', 
     ];
 
     /**
@@ -44,13 +44,10 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
-        // تمت إزالة cast الخاص بـ is_verified لأنه أصبح Enum/String
     ];
 
     /**
      * Get the identifier that will be stored in the subject claim of the JWT.
-     *
-     * @return mixed
      */
     public function getJWTIdentifier()
     {
@@ -59,15 +56,26 @@ class User extends Authenticatable implements JWTSubject
 
     /**
      * Return a key value array, containing any custom claims to be added to the JWT.
-     *
-     * @return array
      */
     public function getJWTCustomClaims()
     {
         return [];
     }
 
-    // --- العلاقات البرمجية ---
+    // --- العلاقات البرمجية (Relationships) ---
+
+    /**
+     * علاقة الحصول على الاشتراك النشط الحالي فقط.
+     * تتحقق من أن الاشتراك مفعل (is_active) وتاريخ نهايته لم يأتِ بعد.
+     */
+    public function activeSubscription()
+    {
+        return $this->hasOne(Subscription::class)
+                    ->where('is_active', true)
+                    ->where('end_date', '>', now())
+                    ->latest('end_date'); // في حال وجود اشتراكين متداخلين بالخطأ، نأخذ الأحدث
+    }
+
     public function apartments()
     {
         return $this->hasMany(Apartment::class, 'landlord_id');

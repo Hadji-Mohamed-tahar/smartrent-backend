@@ -8,7 +8,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ApartmentController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\LandlordController;
-use App\Http\Controllers\Api\AdminController; // نستخدم هذا لجميع مهام الأدمن
+use App\Http\Controllers\Api\AdminController; 
 use App\Http\Controllers\Api\UserController;
 
 /*
@@ -56,8 +56,13 @@ Route::middleware("auth:api")->group(function () {
     });
 
     // د) عمليات الشقق للملاك الموثقين
-    Route::middleware("verified.landlord")->group(function () {
+    // 1. مسار الإضافة: يتطلب فحص حد الاشتراك
+    Route::middleware(["verified.landlord", "check.subscription.limit"])->group(function () {
         Route::post("apartments", [ApartmentController::class, "store"]);
+    });
+
+    // 2. مسارات التعديل والحذف: لا تتطلب فحص الحد
+    Route::middleware("verified.landlord")->group(function () {
         Route::post("apartments/{id}", [ApartmentController::class, "update"]);
         Route::delete("apartments/{id}", [ApartmentController::class, "destroy"]);
     });
@@ -71,7 +76,7 @@ Route::middleware("auth:api")->group(function () {
     // و) مسارات المسؤول (Admin APIs)
     Route::prefix("admin")->middleware("admin.check")->group(function () {
         
-        // إدارة الأدمن (المشرفين)
+        // إدارة الأدمن
         Route::get('admins', [AdminController::class, 'indexAdmins']);
         Route::post('admins', [AdminController::class, 'storeAdmin']);
         Route::put('admins/{admin_id}', [AdminController::class, 'updateAdmin']);
@@ -98,7 +103,7 @@ Route::middleware("auth:api")->group(function () {
         Route::post('verifications/{verification_id}/approve', [AdminController::class, 'approveVerification']);
         Route::post('verifications/{verification_id}/reject', [AdminController::class, 'rejectVerification']);
 
-        // --- إضافة مسارات إدارة الشقق الجديدة هنا ---
+        // إدارة الشقق
         Route::get('apartments', [AdminController::class, 'indexApartments']);
         Route::post('apartments/{id}/approve', [AdminController::class, 'approveApartment']);
         Route::post('apartments/{id}/reject', [AdminController::class, 'rejectApartment']);

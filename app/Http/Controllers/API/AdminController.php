@@ -97,6 +97,11 @@ class AdminController extends Controller
         return response()->json(["packages" => $packages]);
     }
 
+   // --- Packages Management ---
+
+    /**
+     * إنشاء باقة جديدة مع التحقق من هيكل الـ JSON في حقل features
+     */
     public function storePackage(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -104,7 +109,16 @@ class AdminController extends Controller
             "description" => "nullable|string",
             "price" => "required|numeric|min:0",
             "duration_in_days" => "required|integer|min:1",
-            "features" => "nullable|array",
+
+            // التحقق من أن features مصفوفة وتحتوي على البيانات المطلوبة
+            "features" => "required|array",
+            "features.max_listings" => "required|integer|min:0", // الحد الأقصى للشقق (إلزامي)
+            "features.listing_duration" => "nullable|string",
+            "features.visibility_rank" => "nullable|string",
+            "features.max_images" => "nullable|integer|min:1",
+            "features.analytics" => "nullable|string",
+            "features.featured_ads" => "nullable|boolean",
+
             "is_active" => "boolean",
         ]);
 
@@ -112,10 +126,19 @@ class AdminController extends Controller
             return response()->json(["errors" => $validator->errors()], 422);
         }
 
+        // بفضل الـ Casting في موديل Package، سيتم تحويل المصفوفة تلقائياً إلى JSON
         $package = Package::create($request->all());
-        return response()->json(["message" => "Package created successfully.", "package" => $package], 201);
+
+        return response()->json([
+            "status" => "success",
+            "message" => "Package created successfully.",
+            "package" => $package
+        ], 201);
     }
 
+    /**
+     * تحديث باقة موجودة مع إمكانية تحديث أجزاء من حقل features
+     */
     public function updatePackage(Request $request, $package_id)
     {
         $package = Package::find($package_id);
@@ -128,7 +151,16 @@ class AdminController extends Controller
             "description" => "nullable|string",
             "price" => "sometimes|required|numeric|min:0",
             "duration_in_days" => "sometimes|required|integer|min:1",
-            "features" => "nullable|array",
+
+            // في التحديث نستخدم sometimes لكي لا يضطر المسؤول لإرسال كل الحقول
+            "features" => "sometimes|required|array",
+            "features.max_listings" => "sometimes|required|integer|min:0",
+            "features.listing_duration" => "nullable|string",
+            "features.visibility_rank" => "nullable|string",
+            "features.max_images" => "nullable|integer|min:1",
+            "features.analytics" => "nullable|string",
+            "features.featured_ads" => "nullable|boolean",
+
             "is_active" => "boolean",
         ]);
 
@@ -137,7 +169,12 @@ class AdminController extends Controller
         }
 
         $package->update($request->all());
-        return response()->json(["message" => "Package updated successfully.", "package" => $package]);
+
+        return response()->json([
+            "status" => "success",
+            "message" => "Package updated successfully.",
+            "package" => $package
+        ]);
     }
 
     public function destroyPackage($package_id)
@@ -194,11 +231,14 @@ class AdminController extends Controller
 
     public function approvePayment(Request $request, $payment_id)
     {
-        $payment = Payment::find($payment_id);
+        // 1. البحث عن عملية الدفع والتأكد من وجودها
+        $payment = Payment::with(['user', 'package'])->find($payment_id);
+
         if (!$payment) {
             return response()->json(["message" => "Payment not found."], 404);
         }
 
+        // 2. التأكد من أن الحالة هي 'بانتظار التحقق' فقط
         if ($payment->status !== "pending_verification") {
             return response()->json(["message" => "Payment is not pending verification."], 400);
         }
@@ -208,27 +248,38 @@ class AdminController extends Controller
             return response()->json(["message" => "Associated package not found."], 404);
         }
 
-        $payment->status = "approved";
-        $payment->admin_notes = $request->input("admin_notes");
-        $payment->save();
+        // 3. البدء في عملية التحديث (Transaction) لضمان دقة البيانات
+        return DB::transaction(function () use ($payment, $package, $request) {
 
-        // Create subscription
-        $startDate = now();
-        $endDate = $startDate->copy()->addDays($package->duration_in_days);
+            // أ. تحديث حالة الدفع
+            $payment->status = "approved";
+            $payment->admin_notes = $request->input("admin_notes");
+            $payment->save();
 
-        $subscription = Subscription::create([
-            "user_id" => $payment->user_id,
-            "package_id" => $payment->package_id,
-            "start_date" => $startDate,
-            "end_date" => $endDate,
-            "is_active" => true,
-        ]);
+            // ب. تعطيل أي اشتراكات نشطة قديمة للمستخدم (مثل الباقة المجانية أو باقة منتهية لم تُعطل)
+            Subscription::where('user_id', $payment->user_id)
+                ->where('is_active', true)
+                ->update(['is_active' => false]);
 
-        return response()->json([
-            "message" => "Payment approved and subscription created successfully.",
-            "payment" => $payment,
-            "subscription" => $subscription,
-        ]);
+            // ج. إنشاء الاشتراك الجديد بناءً على الباقة المدفوعة
+            $startDate = now();
+            $endDate = $startDate->copy()->addDays($package->duration_in_days);
+
+            $subscription = Subscription::create([
+                "user_id" => $payment->user_id,
+                "package_id" => $payment->package_id,
+                "start_date" => $startDate,
+                "end_date" => $endDate,
+                "is_active" => true,
+            ]);
+
+            return response()->json([
+                "status" => "success",
+                "message" => "Payment approved. Old subscriptions deactivated and new package activated.",
+                "payment" => $payment,
+                "subscription" => $subscription,
+            ]);
+        });
     }
 
     public function rejectPayment(Request $request, $payment_id)
