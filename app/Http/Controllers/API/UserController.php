@@ -221,26 +221,29 @@ class UserController extends Controller
         return response()->json(["payments" => $formattedPayments]);
     }
 
-    public function showMyPayment($payment_id)
-    {
-        /** @var User $user */
-        $user = Auth::user();
-        $payment = $user->payments()->with("package")->find($payment_id);
+  public function showMyPayment($payment_id)
+{
+    /** @var User $user */
+    $user = Auth::user();
+    
+    // جلب الدفع مع الباقة
+    $payment = $user->payments()->with("package")->find($payment_id);
 
-        if (!$payment) {
-            return response()->json(["message" => "Payment not found."], 404);
-        }
-
-        return response()->json([
-            "payment" => [
-                "id" => $payment->id,
-                "package_name" => $payment->package->name,
-                "amount" => $payment->amount,
-                "payment_method" => $payment->payment_method,
-                "status" => $payment->status,
-                "receipt_image_path" => $payment->receipt_image_path ? Storage::url($payment->receipt_image_path) : null,
-                "created_at" => $payment->created_at->format("Y-m-d H:i:s"),
-            ],
-        ]);
+    if (!$payment) {
+        return response()->json(["message" => "Payment not found."], 404);
     }
+
+    return response()->json([
+        "payment" => [
+            "id" => $payment->id,
+            "package_name" => $payment->package->name,
+            "amount" => $payment->amount,
+            "payment_method" => $payment->payment_method,
+            "status" => $payment->status,
+            // هنا نكتفي باستدعاء الحقل مباشرة، والـ Accessor سيتكفل بالباقي
+            "receipt_image_path" => $payment->receipt_image_path, 
+            "created_at" => $payment->created_at->format("Y-m-d H:i:s"),
+        ],
+    ]);
+}
 }

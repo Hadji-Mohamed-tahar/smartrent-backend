@@ -16,6 +16,26 @@ class VerificationDocument extends Model
         'status'
     ];
 
+    /**
+     * Accessor: تحويل مسار وثيقة التحقق إلى رابط URL كامل
+     */
+    public function getDocumentPathAttribute($value)
+    {
+        if (!$value) {
+            return null;
+        }
+
+        // التعامل مع الروابط الخارجية (مثل Faker)
+        if (str_starts_with($value, 'http')) {
+            return $value;
+        }
+
+        // تحويل المسار النسبي إلى رابط كامل
+        return asset('storage/' . $value);
+    }
+
+    // --- العلاقات ---
+
     public function user()
     {
         return $this->belongsTo(User::class);

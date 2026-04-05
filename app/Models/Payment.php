@@ -23,6 +23,26 @@ class Payment extends Model
         'amount' => 'decimal:2',
     ];
 
+    /**
+     * Accessor: تحويل مسار وصل الدفع إلى رابط كامل
+     */
+    public function getReceiptImagePathAttribute($value)
+    {
+        if (!$value) {
+            return null;
+        }
+
+        // إذا كان الرابط يبدأ بـ http (روابط تجريبية أو خارجية)
+        if (str_starts_with($value, 'http')) {
+            return $value;
+        }
+
+        // تحويل المسار المخزن في storage إلى رابط URL كامل
+        return asset('storage/' . $value);
+    }
+
+    // --- العلاقات ---
+
     public function user()
     {
         return $this->belongsTo(User::class);
